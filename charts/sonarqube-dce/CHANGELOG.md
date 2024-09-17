@@ -1,11 +1,35 @@
 # SonarQube Chart Changelog
 All changes to this chart will be documented in this file.
 
+## [10.7.0]
+* Update Chart's version to 10.7.0
+* Support Kubernetes v1.30
+* Upgrade ingress-nginx dependency to 4.10.1
+* Deprecate `jdbcOverwrite.enable` in favor of `jdbcOverwrite.enabled`
+* Enable the setup of ReadOnlyRootFilesystem in the security contexts
+* Support basic chart installation on Openshift
+* Support Openshift Route
+* Fix networkPolicy.additionalPolicys typo
+* Support install-plugin and prometheusExporter proxy variables in secret
+* Support GatewayAPI HttpRoute
+* Support Openshift SCCv2 by default when Openshift.enabled=true
+* Deprecate Openshift.createSCC
+* Support the TLS communication between App and Search nodes
+* Support additional CA Certificate as ConfigMap instead of Secret only
+* Changed default value for caCerts.image
+* Document the upgrade process when autoscaling is enabled
+* Fix openshift change-admin-password-hook Job SecurityContext failure
+
 ## [10.6.0]
+* Upgrade SonarQube to 10.6.0
 * Update Chart's version to 10.6.0
 * Fix the env-var templating when sourcing from secrets
 * Fix the postgresql chart's repository link
 * Calibrate probes' initialDelaySeconds
+* Define HorizontalPodAutoscaler for the app deployment
+* Add support for overriding liveness/readiness probe logic in the app nodes
+* Add ApplicationNodes.affinity, ApplicationNodes.tolerations, searchNodes.affinity, searchNode.tolerations, ApplicationNodes.nodeSelector, searchNodes.nodeSelector
+* Define affinity, tolerations, and nodeSelector parameters for App and Search nodes
 
 ## [10.5.0]
 * Upgrade SonarQube to 10.5.0

@@ -7,8 +7,8 @@ x-google-marketplace:
   publishedVersion: "$TAG"
   publishedVersionMetadata:
     releaseNote: >-
-      Releasing SonarQube 10.5.x as a google cloud k8s marketplace application.
-      Please find the release notes here: https://www.sonarsource.com/blog/sonarqube-10-5-release-announcement.
+      Releasing SonarQube 10.6.x as a google cloud k8s marketplace application.
+      Please find the release notes here: https://www.sonarsource.com/products/sonarqube/whats-new/sonarqube-10-6/.
   images:
     '':
       properties:
@@ -38,7 +38,7 @@ properties:
     type: string
     x-google-marketplace:
       type: MASKED_FIELD
-  jdbcOverwrite.enable:
+  jdbcOverwrite.enabled:
     title: Connection to a database - Recommended
     description: Connect SonarQube to your PostgreSQL database. The connection parameters JDBC URL, username, and password will be used. Make sure that the Embedded database option is disabled.
     type: boolean

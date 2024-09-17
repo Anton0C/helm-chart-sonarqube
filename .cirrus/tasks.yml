@@ -3,14 +3,17 @@ env:
   NIGHTLY_CRON: 'nightly-cron'
   DOCKER_USERNAME: VAULT[development/kv/data/docker/sonardockerrw data.username]
   DOCKER_PASSWORD: VAULT[development/kv/data/docker/sonardockerrw data.access_token_rwd]
-  KUBE_VERSION: 1.29.0
+  KUBE_VERSION: 1.30.0
   DOCKER_GCLOUD_SA_KEY: VAULT[development/team/sonarqube/kv/data/gcp-marketplace-registry-staging data.key]
   GCLOUD_REGISTRY: gcr.io/sonarqube-marketplace-provider # This is the staging registry
   GCLOUD_PRODUCT_NAME: sonarqube-dce-staging # This is the staging product name
-  GCLOUD_TAG: 10.5.0
+  GCLOUD_TAG: 10.6.0
 
 except_nightly_cron: &EXCEPT_ON_NIGHTLY_CRON
   only_if: $CIRRUS_CRON != $NIGHTLY_CRON
+
+except_external_pr_or_cron: &EXCEPT_ON_PR_OR_CRON
+  only_if: $CIRRUS_PRERELEASE != "true" && $CIRRUS_PR == "" && $CIRRUS_CRON != $NIGHTLY_CRON
 
 only_on_non_release_draft_template: &ONLY_ON_NON_RELEASE_DRAFT_TEMPLATE
   only_if: $CIRRUS_PRERELEASE != "true"
@@ -23,7 +26,6 @@ docker_build_container_template: &CONTAINER_TEMPLATE
   builder_role: cirrus-builder
   builder_image: docker-builder-v*
   builder_instance_type: t2.small
-  builder_subnet_id: ${CIRRUS_AWS_SUBNET}
   region: eu-central-1
   namespace: default
   cpu: 1
@@ -41,7 +43,6 @@ vm_instance_template: &VM_TEMPLATE
   image: docker-builder-v*
   type: t2.small
   region: eu-central-1
-  subnet_id: ${CIRRUS_AWS_SUBNET}
 
 clone_script_template: &CLONE_SCRIPT_TEMPLATE
   clone_script: |
@@ -103,7 +104,7 @@ verify_gcp_app_template: &VERIFY_GCP_APP_TEMPLATE
     - gcloud container clusters get-credentials sonarqube-marketplace-staging-standard --zone=europe-west1-b --project=sonarqube-marketplace-provider
   verify_script:
     - kubectl get pods
-    - mpdev verify --deployer=$GCLOUD_REGISTRY/$GCLOUD_PRODUCT_NAME/deployer:$GCLOUD_TAG --wait_timeout=1200 --parameters='{"name":"${GCLOUD_PRODUCT_NAME}-cirrus-test", "namespace":"test-cirrus","ApplicationNodes.jwtSecret":"dZ0EB0KxnF++nr5+4vfTCaun/eWbv6gOoXodiAMqcFo=", "postgresql.enabled":true, "jdbcOverwrite.enable":false }'
+    - mpdev verify --deployer=$GCLOUD_REGISTRY/$GCLOUD_PRODUCT_NAME/deployer:$GCLOUD_TAG --wait_timeout=1200 --parameters='{"name":"${GCLOUD_PRODUCT_NAME}-cirrus-test", "namespace":"test-cirrus","ApplicationNodes.jwtSecret":"dZ0EB0KxnF++nr5+4vfTCaun/eWbv6gOoXodiAMqcFo=", "postgresql.enabled":true, "jdbcOverwrite.enabled":false }'
   depends_on:
     - build_gcp_staging_app
 
@@ -133,6 +134,25 @@ chart_static_compatibility_test_task:
     - helm dependency build
     - ../../.cirrus/unit_helm_compatibility_test.sh    
 
+chart_fixture_test_task:
+  <<: *ONLY_ON_NON_RELEASE_DRAFT_TEMPLATE
+  timeout_in: 30m
+  eks_container:
+    <<: *CONTAINER_TEMPLATE
+    cpu: 1
+    memory: 1Gb
+  <<: *CLONE_SCRIPT_TEMPLATE
+  script:
+    - helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+    - helm repo add bitnami-pre2022 https://raw.githubusercontent.com/bitnami/charts/archive-full-index/bitnami
+    - cd ${CIRRUS_WORKING_DIR}/charts/sonarqube
+    - helm dependency build
+    - cd ${CIRRUS_WORKING_DIR}/charts/sonarqube-dce
+    - helm dependency build
+    - cd ../..
+    - .cirrus/generate_helm_fixtures.sh
+    - git diff --exit-code
+
 chart_testing_task:
   <<: *ONLY_ON_NON_RELEASE_DRAFT_TEMPLATE
   timeout_in: 30m
@@ -140,25 +160,18 @@ chart_testing_task:
     <<: *CONTAINER_TEMPLATE
     cpu: 2
     memory: 4Gb
-    additional_containers:
-      - name: dockerdaemon
-        privileged: true
-        cpu: 4
-        memory: 16Gb
-        image: public.ecr.aws/docker/library/docker:dind
-        port: 2375
-        env:
-          DOCKER_DRIVER: overlay2
-          DOCKER_TLS_CERTDIR: ""
   <<: *CLONE_SCRIPT_TEMPLATE
-  start_kind_script:
-    - export DOCKER_HOST=tcp://localhost:2375
-    - ./.cirrus/wait_for_kind.sh
+  authenticate_to_eks_script:
+    - ./.cirrus/eks.sh
+    - kubectl get nodes
+  setup_script:
+    - kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f - 
+    - kubectl create secret docker-registry pullsecret --namespace test --docker-username=${DOCKER_USERNAME} --docker-password=${DOCKER_PASSWORD} --dry-run=client -o yaml | kubectl apply -f -
   script:
-    - kubectl create namespace test
-    - kubectl create secret docker-registry pullsecret --namespace test --docker-username=${DOCKER_USERNAME} --docker-password=${DOCKER_PASSWORD}
     - ct lint --config test.yaml --all
-    - ct install --namespace test --config test.yaml --all
+    - ct install --namespace test --config test.yaml --all --debug
+  teardown_script:
+    - kubectl delete namespace test
   artifacthub_lint_script:
     - ah lint
   depends_on:
@@ -194,8 +207,7 @@ chart_packaging_task:
     - chart_testing
 
 push_to_repox_task:
-  <<: *ONLY_ON_NON_RELEASE_DRAFT_TEMPLATE
-  <<: *EXCEPT_ON_NIGHTLY_CRON
+  <<: *EXCEPT_ON_PR_OR_CRON
   timeout_in: 15m
   eks_container:
     <<: *STD_CONTAINER_TEMPLATE
